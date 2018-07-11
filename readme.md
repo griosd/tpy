@@ -1,5 +1,5 @@
 ## Readme
-this is an empty readme file
+TGPy: Transport Gaussian Processes with PyTorch
 
 Future features
 * Toy example of GPs with PyTorch
