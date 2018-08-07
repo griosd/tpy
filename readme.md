@@ -1,5 +1,5 @@
 ## Readme
-TGPy: Transport Gaussian Processes with PyTorch
+TPy: Transport Processes with PyTorch
 
 Future features
 * Toy example of GPs with PyTorch
