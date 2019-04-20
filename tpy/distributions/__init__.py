@@ -1,6 +1,5 @@
 import torch
-from torch.autograd import Variable
-from torch.autograd import Function
+
 import numpy as np
 import pandas as pd
 import scipy.linalg
@@ -10,62 +9,9 @@ from torch.distributions import biject_to, constraints
 #from pyro.distributions.util import scale_tensor
 from pyro import poutine
 
-use_cuda = True
 
 
-def cuda(use=True):
-    global use_cuda
-    use_cuda = use
 
-
-def cpu(use=True):
-    global use_cuda
-    use_cuda = not use
-
-
-def device():
-    return torch.device("cuda") if torch.cuda.is_available() and use_cuda else torch.device("cpu")
-
-
-def numpy(tensor):
-    try:
-        return tensor.numpy()
-    except:
-        try:
-            return tensor.detach().numpy()
-        except:
-            return tensor.detach().cpu().numpy()
-
-
-def nan_to_num(t, num=0):
-    t[torch.isnan(t)] = num
-    return t
-
-
-device_fn = device
-
-
-class TpModule(nn.Module):
-    def __init__(self, device=None, name=None):
-        super(TpModule, self).__init__()
-        if device is None:
-            device = device_fn()
-        self._device = device.type
-        if name is None:
-            self.name = str(type(self)).split('.')[-1]
-        else:
-            self.name = name
-
-    def forward(self, *input):
-        pass
-
-    def to(self, device):
-        self._device = device.type
-        return super(TpModule, self).to(device)
-
-    @property
-    def device(self):
-        return torch.device(self._device)
 
 
 class MixtureDistribution(Distribution):
@@ -124,50 +70,6 @@ class ConcatDistribution(TransportFamily):
         for xi, d, s in zip(torch.split(x, self.shapes, dim=-1), self.generators, self.shapes):
             lp += d.log_prob(xi).sum(dim=-1)
         return lp
-
-
-class MatrixSquareRoot(Function):
-    """Square root of a positive definite matrix.
-    NOTE: matrix square root is not differentiable for matrices with
-          zero eigenvalues.
-    """
-    @staticmethod
-    def forward(ctx, input):
-        m = numpy(input)
-        try:
-            sqrtm = torch.from_numpy(scipy.linalg.sqrtm(m).real).type_as(input)
-        except Exception as e:
-            print(m, e)
-            sqrtm = input*1e6
-        ctx.save_for_backward(sqrtm)
-        return sqrtm
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        grad_input = None
-        if ctx.needs_input_grad[0]:
-            sqrtm, = ctx.saved_variables
-            sqrtm = numpy(sqrtm.data).astype(np.float_)
-            gm = numpy(grad_output.data).astype(np.float_)
-
-            # Given a positive semi-definite matrix X,
-            # since X = X^{1/2}X^{1/2}, we can compute the gradient of the
-            # matrix square root dX^{1/2} by solving the Sylvester equation:
-            # dX = (d(X^{1/2})X^{1/2} + X^{1/2}(dX^{1/2}).
-            grad_sqrtm = scipy.linalg.solve_sylvester(sqrtm, sqrtm, gm)
-
-            grad_input = torch.from_numpy(grad_sqrtm).type_as(grad_output.data)
-        return Variable(grad_input)
-
-
-sqrtm = MatrixSquareRoot.apply
-
-
-def bsqrtm(batch):
-    if len(batch.shape) == 2:
-        return sqrtm(batch)
-    else:
-        return torch.stack([sqrtm(m) for m in batch])
 
 
 def bgesv(B, A):

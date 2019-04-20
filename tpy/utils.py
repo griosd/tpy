@@ -1,9 +1,11 @@
+import os
+import dill
 import numpy as np
 import pandas as pd
 import seaborn as sb
 import matplotlib.pyplot as plt
 import torch
-from .distributions import numpy
+from .core import numpy
 
 
 class DictObj(dict):
@@ -48,7 +50,9 @@ def plot(tensor, *args, **kwargs):
     return plt.plot(numpy(tensor), *args, **kwargs)
 
 
-def plot2d(tensor1, tensor2, *args, **kwargs):
+def plot2d(tensor1, tensor2=None, *args, **kwargs):
+    if tensor2 is None:
+        return plt.plot(numpy(tensor1), *args, **kwargs)
     return plt.plot(numpy(tensor1), numpy(tensor2), *args, **kwargs)
 
 
@@ -204,3 +208,33 @@ def plot_training(params_df, burnin = False, outlier = False, varnames=None, tra
         ax[i, 0].grid(grid)
         ax[i, 0].set_ylim(bottom=0)
     plt.tight_layout()
+
+
+def set_style():
+    plt.rcParams['figure.figsize'] = (20, 6)
+    #output_notebook()
+
+
+def save_df(df, path='df.h5', key='df'):
+    rfind = path.rfind('/')
+    if rfind > 0:
+        os.makedirs(path[:rfind], exist_ok=True)
+    df.to_hdf(path, key=key)
+
+
+def load_df(path='df.h5', key='df'):
+    return pd.read_hdf(path, key)
+
+
+def save_pkl(objs, path ='model.pkl'):
+    rfind = path.rfind('/')
+    if rfind > 0:
+        os.makedirs(path[:rfind], exist_ok=True)
+    with open(path, 'wb') as file:
+        dill.dump(objs, file)
+
+
+def load_pkl(path = 'model.pkl'):
+    with open(path, 'rb') as file:
+        objs = dill.load(file)
+    return objs
