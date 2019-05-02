@@ -3,203 +3,113 @@ import numpy as np
 from tqdm import tqdm_notebook
 from copy import deepcopy
 from pyro import poutine
-from .distributions import loss_logp, get_transform, numpy
+from .core import numpy
+from torch.distributions import biject_to, constraints
 from .utils import dict_to_array, get_params_df_from_list_dict, get_params_dict_from_df
 
 one = torch.tensor(1.0)
 two = torch.tensor(2.0)
 
 
-def gaussian_step(params, sigma):
-    sigma_torch = {'cpu': torch.tensor(sigma, device='cpu', dtype=torch.float)}
-    if torch.cuda.is_available():
-        sigma_torch['cuda:0'] = torch.tensor(sigma, device='cuda', dtype=torch.float)
-    proposal = {}
-    for name, node in params.items():
-        scale = torch.mul(sigma_torch[str(node.device)], torch.ones_like(node))
-        proposal[name] = torch.distributions.Normal(loc=node, scale=scale).sample()
-    return proposal
+def abc_samples(posterior, t, obs_t, obs_y, nsamples=100, pdarts=33, eps=5e-3, ntraits=1000):
+    device = obs_y.device
+    samples = torch.empty(t.shape[0], nsamples, device=device)
+    obs_n = obs_t.shape[0]
+    all_t = torch.cat([obs_t, t])
+    obs_y_norm = obs_y.norm(dim=0)
+    current_samples = 0
+    darts = (nsamples - current_samples) * pdarts
+    for i in range(ntraits):
+        samples_darts = posterior(all_t, darts)
+        samples_darts_norm = samples_darts[:obs_n].norm(dim=0)
+        samples_darts_index = (obs_y_norm * (1 - eps) < samples_darts_norm) & (samples_darts_norm < obs_y_norm * (1 + eps))
+        samples_darts_n = samples_darts_index.sum().item()
+        samples[:, current_samples: (current_samples+samples_darts_n)] = samples_darts[obs_n:, samples_darts_index][:, :min(nsamples-current_samples, samples_darts_n)]
+        current_samples += samples_darts_n
+        if current_samples >= nsamples:
+            return samples
+    print('incomplete samples:', current_samples, ' of ', nsamples)
+    return samples
 
 
-def sample_emcee_pond(nchains, niter, a, device):
-    low = torch.zeros(nchains, device=device)
-    high = torch.ones(nchains, device=device)
-    r = torch.distributions.Uniform(low=low, high=high).sample(torch.Size([niter]))
-    a_torch = torch.tensor(a, device=device, dtype=torch.float)
-    return torch.div(torch.pow(torch.mul(a_torch - one.to(device), r) + one.to(device), two.to(device)), a_torch)
-
-
-def emcee_step(params, pond_emcee, index_chains, arange, device):
-    nchains = index_chains.shape[0]
-    perm = torch.randint(0, nchains - 1, (nchains,), device=device, dtype=torch.long)
-    index = torch.index_select(index_chains.view(-1), 0, perm + arange)
-    proposal = {}
-    _one = one.to(device)
-    for name, node in params.items():
-        shape = (-1, ) + (1, )*(len(node.shape) - 1)
-        node_dev = node.to(device)
-        proposal[name] = (torch.mul(pond_emcee.view(shape), node_dev) + torch.mul(_one - pond_emcee.view(shape), torch.index_select(node_dev, 0, index))).to(node.device)
-    return proposal
-
-
-def sgd_samples(model, nparams=50, niter=1000, data=None, times_train = None, times_cross=None, stochastic_gradient=True,
-                burnin=None, p_batch=0.7, update_loss=10, device=None):
-    trace = poutine.trace(model).get_trace(data)
-    transforms = get_transform(trace)
-    params_map = {}
+def get_transforms(trace):
+    transforms = {}
     for name, node in trace.iter_stochastic_nodes():
+        if node["fn"].support is not constraints.real:
+            transforms[name] = biject_to(node["fn"].support)
+    return transforms
+
+
+def params_transform(params, transforms=None, trace=None):
+    if transforms is None:
+        transforms = get_transforms(trace)
+    params_trans = {}
+    for name in params.keys():
         if name in transforms:
-            params_map[name] = transforms[name](node['value'])
+            params_trans[name] = transforms[name].inv(params[name])
         else:
-            params_map[name] = node['value']
-        params_map[name].requires_grad_(True)
+            params_trans[name] = params[name]
+    return params_trans
 
-    ndim = len(dict_to_array(params_map, trace)) // nparams
-    optimizer = torch.optim.Adam([{'params': [v for k, v in params_map.items() if k not in ['sigma', 'noise']],
-                                   'lr': 1e-2},
-                                  {'params': [v for k, v in params_map.items() if k in ['sigma', 'noise']],
-                                   'lr': 1e-2}], lr=1e-2)
-    optimizer.zero_grad()
-    iter_range = torch.arange(niter, dtype=torch.long, device=device)
-    loss_cross_niter = torch.empty(niter, nparams, dtype=torch.float, device=device)
-    loss_batch_niter = torch.empty(niter, nparams, dtype=torch.float, device=device)
 
-    size_batch = int(len(times_cross)*p_batch)
-    times_batch = torch.arange(size_batch, device=device)
-    times_random = torch.arange(size_batch, dtype=torch.float, device=device)
+def params_original(params_trans, transforms=None, trace=None):
+    if transforms is None:
+        transforms = get_transforms(trace)
+    params = {}
+    for name in params_trans.keys():
+        if name in transforms:
+            params[name] = transforms[name](params_trans[name])
+        else:
+            params[name] = params_trans[name]
+    return params
 
-    zero_long = torch.tensor(0).to(device)
-    progress = tqdm_notebook(iter_range)
+
+def sgd_samples(tgp, params_model, niter=1000, start=None, lr=1e-2, psgd=0.5, pbatch=0.7, update_batch=100, update_tqdm=10):
+    device = tgp.device
+    obs_n = len(tgp.obs_t)
+    size_batch = int(obs_n * pbatch)
+    niter_sgd = int(niter * psgd)
     all_params = []
+    all_loss = []
+
+    params = params_model(start)
+    trace = poutine.trace(params_model).get_trace()
+    transforms = get_transforms(trace)
+    params_map = params_transform(params, transforms)
+    for name, param in params_map.items():
+        param.requires_grad_()
+    optimizer = torch.optim.Adam(params_map.values(), lr=lr)
+    original_params = params_original(params_map, transforms)
+    params_model(params=original_params)
+
+    times_random = torch.empty(obs_n, device=device)
+    _, select_batch = times_random.uniform_().sort()
+    index_batch = select_batch[:size_batch]
+    iter_range = torch.arange(niter, dtype=torch.long, device=device)
+    progress = tqdm_notebook(iter_range)
+    zero_long = torch.tensor(0).to(device)
     for t in progress:
 
-        # Compute and print loss
-        if stochastic_gradient:
-            _, select_batch = times_random.uniform_().sort()
-        torch.index_select(times_train, 0, select_batch[:size_batch], out=times_batch)
+        if t < niter_sgd:
+            if zero_long.equal(t % update_batch):
+                _, select_batch = times_random.uniform_().sort()
+                index_batch = select_batch[:size_batch]
+        else:
+            index_batch = Ellipsis
 
-        # loss
-        loss_batch = loss_logp(params_map, trace, data, model, times_batch, device=device)
-        loss_backward = torch.sum(loss_batch)
+        params = params_original(params_map, transforms)
+        params_model(params=params)
+        loss_nll = tgp.nll(index=index_batch)
+        loss_backward = loss_nll.sum()
 
-        with torch.no_grad():
-            loss_cross = loss_logp(params_map, trace, data, model, times_cross, device=device)
+        all_params += [{k: v.detach().data.clone() for k, v in params.items()}]
+        all_loss += [loss_nll.detach().data.clone()]
 
-        loss_cross_niter[t] = loss_cross
-        loss_batch_niter[t] = loss_batch
-
-        if zero_long.equal(t % update_loss):
-            progress.set_description('{0:.5f}'.format(float(numpy(loss_cross.mean()))))
-
-        # Zero gradients, perform a backward pass, and update the weights.
         optimizer.zero_grad()
-        loss_backward.backward(retain_graph=False)
+        loss_backward.backward(retain_graph=True)
         optimizer.step()
 
-        #all_params += [{name: deepcopy(value.data.to('cpu')) for name, value in params_map.items()}]
-        all_params += [{name: deepcopy(node['value'].data.to('cpu')) for name, node in trace.iter_stochastic_nodes()}]
+        if zero_long.equal(t % update_tqdm):
+            progress.set_description('{0:.5f}'.format(loss_nll.min().item()))
 
-        del loss_cross
-        del loss_batch
-    loss_cross_np = numpy(loss_cross_niter).copy()
-    loss_batch_np = numpy(loss_batch_niter).copy()
-    loss = {'_loss_cross': loss_cross_np.T, '_loss_batch': loss_batch_np.T}
-    params_df = get_params_df_from_list_dict(all_params, loss)
-    if burnin is None:
-        burnin = niter//2
-    params_df['_burnin'] = params_df['_niter'] > burnin
-    params_df['_outlier'] = (~params_df.isna()).prod(axis=1) | (
-                params_df['_loss_cross'] > np.percentile(params_df['_loss_cross'].unique(), 1))
-    return params_df
-
-
-def mcmc_samples(model, init, nparams=50, niter=1000, data=None, times_train = None, times_cross=None, emcee = True,
-                 a_emcee = 1.5, sigma_gaussian=0.05, burnin=None, update_acc=10, device=None):
-
-    trace = poutine.trace(model).get_trace(data)
-    transforms = get_transform(trace)
-    params_mcmc = get_params_dict_from_df(init, trace, device)
-    for name, node in trace.iter_stochastic_nodes():
-        if name in transforms:
-            params_mcmc[name] = transforms[name](params_mcmc[name].to(node['value'].device))
-        else:
-            params_mcmc[name] = params_mcmc[name].to(node['value'].device)
-
-    index_chains = np.empty((nparams, nparams - 1))
-    for i in range(nparams):
-        for j in range(nparams - 1):
-            if i <= j:
-                index_chains[i, j] = j + 1
-            else:
-                index_chains[i, j] = j
-    index_chains = torch.tensor(index_chains, device=device, dtype=torch.long)
-    nchains = index_chains.shape[0]
-    emcee_arange = torch.arange(0, (nchains) * (nchains), nchains - 1, device=device)[:nchains]
-    u = torch.distributions.Uniform(low=torch.zeros(nparams, device=device),
-                                    high=torch.ones(nparams, device=device)).sample(torch.Size([niter])).log()
-    pond_emcee = sample_emcee_pond(nparams, niter, a=a_emcee, device=device)
-
-    ndim = len(dict_to_array(params_mcmc, trace)) // nparams
-    iter_range = torch.arange(niter, dtype=torch.long, device=device)
-    loss_cross_niter = torch.empty(niter, nparams, dtype=torch.float, device=device)
-    loss_batch_niter = torch.empty(niter, nparams, dtype=torch.float, device=device)
-
-    with torch.no_grad():
-        loss_batch = loss_logp(params_mcmc, trace, data, model, times_train, device=device)
-        loss_cross = loss_logp(params_mcmc, trace, data, model, times_cross, device=device)
-        loss_batch[loss_batch != loss_batch] = np.infty
-
-    zero_long = torch.tensor(0).to(device)
-    zero = torch.tensor(0.0).to(device)
-    one = torch.tensor(1.0).to(device)
-    acc_rate = 0
-    all_params = []
-
-    progress = tqdm_notebook(iter_range)
-    with torch.no_grad():
-        for t in progress:
-
-            if emcee:
-                proposal = emcee_step(params_mcmc, pond_emcee[t], index_chains=index_chains, arange=emcee_arange, device=device)
-            else:
-                proposal = gaussian_step(params_mcmc, sigma=sigma_gaussian)
-
-            loss_batch_prop = loss_logp(proposal, trace, data, model, times_train, device=device)
-            loss_cross_prop = loss_logp(proposal, trace, data, model, times_cross, device=device)
-            loss_batch_prop[loss_batch != loss_batch] = np.infty
-
-            delta_loss = loss_batch - loss_batch_prop
-            delta_loss[delta_loss != delta_loss] = 0.0
-            if emcee:
-                rho = torch.min(torch.add(torch.mul(ndim - one, pond_emcee[t].log()), delta_loss), zero)
-            else:
-                rho = torch.min(delta_loss, zero)
-
-            index = (u[t] < rho)
-            index_float = index.type(torch.float)
-
-            # print(index)
-            acc_rate += index_float.mean().to('cpu')
-
-            # get new set of params
-            for var, value in params_mcmc.items():
-                params_mcmc[var][index] = proposal[var][index]
-            all_params += [{name: node['value'].data.to(device) for name, node in trace.iter_stochastic_nodes()}]
-
-            loss_batch[index] = loss_batch_prop[index]
-            loss_cross[index] = loss_cross_prop[index]
-            loss_cross_niter[t] = loss_cross
-            loss_batch_niter[t] = loss_batch
-            if zero_long.equal(t % update_acc):
-                progress.set_description('{0:.5f}'.format(acc_rate / t.item()))
-
-    loss_cross_np = numpy(loss_cross_niter).copy()
-    loss_batch_np = numpy(loss_batch_niter).copy()
-    loss = {'_loss_cross': loss_cross_np.T, '_loss_batch': loss_batch_np.T}
-    params_df = get_params_df_from_list_dict(all_params, loss)
-    if burnin is None:
-        burnin = niter//2
-    params_df['_burnin'] = params_df['_niter'] > burnin
-    params_df['_outlier'] = (~params_df.isna()).prod(axis=1) | (
-                params_df['_loss_cross'] > np.percentile(params_df['_loss_cross'].unique(), 1))
-    return params_df
+    return all_params, all_loss

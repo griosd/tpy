@@ -93,7 +93,7 @@ class BW(Kernel):
         self.var = var
 
     def k(self, x1, x2):
-        return self.var * torch.min(x1, x2)
+        return torch.mul(self.var, torch.min(x1, x2))
 
 
 class SE(Kernel):

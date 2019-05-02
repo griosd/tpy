@@ -11,12 +11,12 @@ class Poly(Deterministic):
     def __init__(self, n=1, w=None, *args, **kwargs):
         super(Poly, self).__init__(*args, **kwargs)
         if w is None:
-            w = torch.ones(n+1, device=self.device)
+            w = torch.ones(n+1, device=self.device).view(-1, n+1, 1)
         self.w = w
-        self.e = torch.arange(len(self.w), device=self.device, dtype=torch.float32).view(-1, 1).contiguous()
+        self.e = torch.arange(self.w.shape[1], device=self.device, dtype=torch.float32).view(1, -1, 1).contiguous()
 
     def forward(self, t):
-        return torch.matmul(self.w, t**self.e)
+        return torch.mul(self.w, t**self.e).sum(dim=1)
 
 
 class Zero(Deterministic):
@@ -37,6 +37,9 @@ class Warped(TpModule):
     def inverse(self, t, y):
         pass
 
+    def gradient_inverse(self, t, y, eps=1e-4):
+        return (self.inverse(t, y*(1+eps)+eps)-self.inverse(t, y*(1-eps)-eps))/(2*eps*(y+1))
+
 
 class Affine(Warped):
     def __init__(self, shift=None, scale=None, pol=0, *args, **kwargs):
@@ -49,7 +52,10 @@ class Affine(Warped):
         self.scale = scale
 
     def forward(self, t, x):
-        return (self.shift(t) + self.scale(t) * x.t()).t()
+        return self.shift(t)[:, :, None] + x * self.scale(t)[:, :, None]
 
     def inverse(self, t, y):
-        return ((y.t() - self.shift(t)) / self.scale(t)).t()
+        return (y - self.shift(t)[:, :, None]) / self.scale(t)[:, :, None]
+
+    def gradient_inverse(self, t, y):
+        return 1/self.scale(t)[:, :, None]

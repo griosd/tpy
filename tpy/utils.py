@@ -79,6 +79,8 @@ def pairplot(tensor, simple=False, bins='auto', labels=None, kde=True, max_sampl
         g.map_upper(sb.scatterplot)
 
 show = plt.show
+xlim = plt.xlim
+ylim = plt.ylim
 
 def dict_to_array(params, trace, device=None):
     if device is None:
