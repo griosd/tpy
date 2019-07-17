@@ -216,6 +216,15 @@ def set_style():
     plt.rcParams['figure.figsize'] = (20, 6)
     #output_notebook()
 
+def plot_text(title="title", x="xlabel", y="ylabel", ncol=3, loc='best', axis=None, legend=True):
+    plt.axis('tight')
+    plt.title(title)
+    plt.xlabel(x)
+    plt.ylabel(y)
+    if legend:
+        plt.legend(ncol=ncol, loc=loc)
+    if axis is not None:
+        plt.axis(axis)
 
 def save_df(df, path='df.h5', key='df'):
     rfind = path.rfind('/')

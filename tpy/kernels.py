@@ -138,6 +138,17 @@ class COS(Kernel):
         return self.var * torch.cos((x1 - x2) / self.period)
 
 
+class SM(Kernel):
+    def __init__(self, var=None, scale=None, freq=None, *args, **kwargs):
+        super(SM, self).__init__(*args, **kwargs)
+        self.var = var
+        self.scale = scale
+        self.freq = freq
+
+    def k(self, x1, x2):
+        return self.var * torch.exp(-((x1 - x2) ** 2) / (self.scale ** 2)) * torch.cos((x1 - x2) * self.freq)
+
+
 class MatrixSquareRoot(torch.autograd.Function):
     """Square root of a positive definite matrix.
     NOTE: matrix square root is not differentiable for matrices with
@@ -181,6 +192,3 @@ def sqrtm(inputs):
         return _sqrtm(inputs)
     else:
         return torch.stack([_sqrtm(m) for m in inputs])
-
-
-cholesky = torch.cholesky

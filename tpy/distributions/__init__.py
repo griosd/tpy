@@ -315,3 +315,35 @@ def mcmc_samples(model, init, nparams=50, niter=1000, data=None, times_train = N
     params_df['_outlier'] = (~params_df.isna()).prod(axis=1) | (
                 params_df['_loss_cross'] > np.percentile(params_df['_loss_cross'].unique(), 1))
     return params_df
+
+def sample_posterior(use_init = None):
+    times_train = torch.arange(ndata, device=device)
+    times_cross = torch.arange(ndata, ndata+ncross, device=device)
+    if use_init is None:
+        params_df = tpy.sgd_samples(model=sample_model, nparams=nparams, niter=sgd_niter, data=obs,
+                                    times_train = times_train, times_cross=times_cross,
+                                    stochastic_gradient = True, p_batch = 0.7, device=device_ll)
+        tpy.plot_training(params_df[params_df._outlier], alpha=0.5, traces=True, confidence=True)
+        plt.show()
+        sgd_sample = params_df[params_df._burnin & params_df._outlier & (params_df._loss_cross < 1e10)].sort_values(by='_loss_cross').drop(['_nchain','_niter','_outlier','_burnin'], axis=1)[:nparams]
+        _ = sgd_sample.hist(bins=nparams)
+        plt.tight_layout()
+        plt.show()
+        init = sgd_sample
+    else:
+        init = use_init[:nparams]
+    params_df = tpy.mcmc_samples(model=sample_model, init=init, nparams=nparams, niter=mcmc_niter,
+                                 data=obs, times_train = times_train, times_cross=times_cross,
+                                 emcee = True, a_emcee = 2.0, sigma_gaussian=0.02, device=device_ll)
+    try:
+        tpy.plot_training(params_df[params_df._outlier], alpha=0.5, traces=True, confidence=True)
+        plt.show()
+    except:
+        pass
+
+    posterior_df = params_df[params_df._burnin & params_df._outlier & (params_df._loss_cross < 1e10)].sort_values(by='_loss_batch').drop(['_nchain','_niter','_outlier','_burnin'], axis=1)
+    _ = posterior_df.hist(bins=nparams)
+    plt.tight_layout()
+    plt.show()
+    display(posterior_df.describe())
+    return posterior_df
