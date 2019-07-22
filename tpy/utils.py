@@ -225,6 +225,7 @@ def plot_text(title="title", x="xlabel", y="ylabel", ncol=3, loc='best', axis=No
         plt.legend(ncol=ncol, loc=loc)
     if axis is not None:
         plt.axis(axis)
+    plt.tight_layout()
 
 def save_df(df, path='df.h5', key='df'):
     rfind = path.rfind('/')

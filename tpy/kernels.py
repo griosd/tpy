@@ -3,6 +3,9 @@ import scipy
 import numpy as np
 from .core import TpModule, numpy
 from torch.autograd import Variable
+from math import pi
+
+pi2 = 2*pi
 
 
 class Kernel(TpModule):
@@ -135,7 +138,18 @@ class COS(Kernel):
         self.period = period
 
     def k(self, x1, x2):
-        return self.var * torch.cos((x1 - x2) / self.period)
+        return self.var * torch.cos(pi2*(x1 - x2) / self.period)
+
+
+class POL(Kernel):
+    def __init__(self, var=None, bias=0, p=1, *args, **kwargs):
+        super(POL, self).__init__(*args, **kwargs)
+        self.bias = bias
+        self.var = var
+        self.p = p
+
+    def k(self, x1, x2):
+        return torch.mul(self.var, (self.bias+torch.mul(x1, x2))**self.p)
 
 
 class SM(Kernel):

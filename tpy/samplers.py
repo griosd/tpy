@@ -124,3 +124,5 @@ def sgd_samples(tgp, params_model, niter=1000, start=None, optim=torch.optim.Rpr
     return all_params, all_loss
 
 
+def quantile(samples, q, dim=1):
+    return samples.new_tensor(np.percentile(numpy(samples), 100*q, axis=dim))

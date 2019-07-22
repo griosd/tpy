@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import gc as _gc
 import pyro
 from torch import nn
@@ -163,3 +164,4 @@ def robust_cholesky(A, upper=False, out=None, jitter=None):
                 continue
 
         raise e
+

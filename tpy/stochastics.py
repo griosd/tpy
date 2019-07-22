@@ -38,7 +38,7 @@ class StochasticProcess(TpModule):
         else:
             return self.posterior(t, n)
 
-    def plot(self, t, samples=None, subsamples=None, mean=True, quantiles=[2.5, 97.5], obs=True, hidden=None, logp=None, alpha=0.2, xlim=None, ylim=None, loc='best', ncol=3, palette='Greens', *args, **kwargs):
+    def plot(self, t, samples=None, subsamples=Ellipsis, mean=True, quantiles=[0.025, 0.975], obs=True, hidden=None, logp=None, alpha=0.2, xlim=None, ylim=None, loc='best', ncol=3, palette='Greens', *args, **kwargs):
         cmap = plt.get_cmap(palette)
         color = cmap(1.0)
         if samples is None:
@@ -49,22 +49,21 @@ class StochasticProcess(TpModule):
                 samples = samples[0]
             else:
                 samples = samples.view(samples.shape[1], -1)
-        if subsamples is None:
-            subsamples = Ellipsis
-        else:
-            subsamples = torch.randperm(samples.shape[1])[:subsamples]
-        plot2d(t, samples[:, subsamples], color=cmap(0.9), alpha=alpha, lw=1,  *args, **kwargs)
+        if subsamples is not None:
+            if type(subsamples) is int:
+                subsamples = torch.randperm(samples.shape[1])[:subsamples]
+            plot2d(t, samples[:, subsamples], color=cmap(0.9), alpha=alpha, lw=1,  *args, **kwargs)
         if mean:
             smean = samples.mean(dim=-1)
             plot2d(t, smean, color=color, lw=3, label='Mean')
             #plot2d(t, smean, color='w', lw=1)
         if quantiles:
             np_samples = numpy(samples)
-            plot2d(t, np.percentile(np_samples, quantiles[0], axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--', label=(str(int(max(quantiles)-min(quantiles))))+'% CI')
+            plot2d(t, np.percentile(np_samples, 100*quantiles[0], axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--', label=(str(int(max(quantiles)-min(quantiles))))+'% CI')
             for q in quantiles[1:]:
-                plot2d(t, np.percentile(np_samples, q, axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--')
-            quantile_down = np.percentile(np_samples, min(quantiles), axis=1)
-            quantile_up = np.percentile(np_samples, max(quantiles), axis=1)
+                plot2d(t, np.percentile(np_samples, 100*q, axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--')
+            quantile_down = np.percentile(np_samples, 100*min(quantiles), axis=1)
+            quantile_up = np.percentile(np_samples, 100*max(quantiles), axis=1)
             plt.fill_between(numpy(t), quantile_up, quantile_down, color=cmap(0.8), alpha=0.1)
 
         if xlim is None:
