@@ -141,6 +141,18 @@ class COS(Kernel):
         return self.var * torch.cos(pi2*(x1 - x2) / self.period)
 
 
+class SINC(Kernel):
+    def __init__(self, var=None, period=None, eps=1e-6, *args, **kwargs):
+        super(SINC, self).__init__(*args, **kwargs)
+        self.var = var
+        self.period = period
+        self.eps = torch.tensor(eps, device=self.var.device)
+
+    def k(self, x1, x2):
+        d = torch.max(torch.abs(x1 - x2), self.eps)
+        return self.var * torch.sin(pi2 * d * self.period) / (pi2 * d * self.period)
+
+
 class POL(Kernel):
     def __init__(self, var=None, bias=0, p=1, *args, **kwargs):
         super(POL, self).__init__(*args, **kwargs)
