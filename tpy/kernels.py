@@ -90,6 +90,14 @@ class WN(Kernel):
         return self.var * x1.eq(x2).float()
 
 
+class NIL(Kernel):
+    def __init__(self, *args, **kwargs):
+        super(NIL, self).__init__(*args, **kwargs)
+
+    def k(self, x1, x2):
+        return 0.0 * x1.eq(x2).float()
+
+
 class BW(Kernel):
     def __init__(self, var=None, *args, **kwargs):
         super(BW, self).__init__(*args, **kwargs)
@@ -195,7 +203,7 @@ class MatrixSquareRoot(torch.autograd.Function):
     def backward(ctx, grad_output):
         grad_input = None
         if ctx.needs_input_grad[0]:
-            sqrtm, = ctx.saved_variables
+            sqrtm = ctx.saved_variables
             sqrtm = numpy(sqrtm.data).astype(np.float_)
             gm = numpy(grad_output.data).astype(np.float_)
 
@@ -213,7 +221,7 @@ _sqrtm = MatrixSquareRoot.apply
 
 
 def sqrtm(inputs):
-    '''Square root of a positive definite matrix'''
+    """Square root of a positive definite matrix"""
     if len(inputs.shape) == 2:
         return _sqrtm(inputs)
     else:
