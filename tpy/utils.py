@@ -143,14 +143,16 @@ def plot_training(params_df, burnin = False, outlier = False, varnames=None, tra
                   alpha=0.35, priors=None,
                   ax=None, traces=True, quantiles=[0.1, 0.9], confidence=True):
 
-    nburnin = params_df.loc[(~params_df._burnin).idxmin()]._niter
-    times_burnin = np.arange(nburnin, params_df._niter.max()+1)
+    nburnin = params_df.loc[(~params_df['_burnin']).idxmin()]['_niter']
+    times_burnin = np.arange(nburnin, params_df['_niter'].max()+1)
     # np.nonzero(params_df.groupby('_niter').mean()['_burnin'].values)[0]
-    burnin_index = params_df._burnin.values
+    burnin_index = params_df['_burnin'].values
     if burnin and hasattr(params_df, '_burnin'):
-        params_df = params_df[params_df._burnin]
-    if outlier and hasattr(params_df, '_outlayer'):
-        params_df = params_df[params_df._outlayer]
+        params_df = params_df[params_df['_burnin']]
+    # if outlier and hasattr(params_df, '_outlayer'):
+    #     params_df = params_df[params_df._outlayer]
+    if outlier and hasattr(params_df, '_outlier'):
+        params_df = params_df[params_df['_outlier']]
     params_df = params_df.set_index(['_nchain']).drop(['_burnin', '_outlier'], axis=1)
     if combined:
         params_df.index = params_df.index * 0
@@ -208,7 +210,7 @@ def plot_training(params_df, burnin = False, outlier = False, varnames=None, tra
             except KeyError:
                 pass
 
-        name_var = str(v)
+        # name_var = str(v)
         # ax[i, 0].set_ylabel(name_var[name_var.find('_')+1:])
         ax[i, 1].set_ylabel("Sample value")
         ax[i, 0].grid(grid)
@@ -244,7 +246,7 @@ def load_df(path='df.h5', key='df'):
     return pd.read_hdf(path, key)
 
 
-def save_pkl(objs, path ='model.pkl'):
+def save_pkl(objs, path='model.pkl'):
     rfind = path.rfind('/')
     if rfind > 0:
         os.makedirs(path[:rfind], exist_ok=True)
@@ -252,7 +254,7 @@ def save_pkl(objs, path ='model.pkl'):
         dill.dump(objs, file)
 
 
-def load_pkl(path = 'model.pkl'):
+def load_pkl(path='model.pkl'):
     with open(path, 'rb') as file:
         objs = dill.load(file)
     return objs
