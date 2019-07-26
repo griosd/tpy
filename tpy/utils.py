@@ -60,7 +60,8 @@ def matshow(tensor, *args, **kwargs):
     return plt.matshow(numpy(tensor), *args, **kwargs)
 
 
-def pairplot(tensor, simple=False, bins='auto', labels=None, kde=True, max_samples=1000, max_dim=5, height=2.5, aspect=1, *args, **kwargs):
+def pairplot(tensor, simple=False, bins='auto', labels=None, kde=True, max_samples=1000, max_dim=5, height=2.5,
+             aspect=1, *args, **kwargs):
     try:
         df = DataFrame(tensor, columns=labels)
     except:
@@ -78,9 +79,11 @@ def pairplot(tensor, simple=False, bins='auto', labels=None, kde=True, max_sampl
         g.map_lower(sb.kdeplot, n_levels=6)
         g.map_upper(sb.scatterplot)
 
+
 show = plt.show
 xlim = plt.xlim
 ylim = plt.ylim
+
 
 def dict_to_array(params, trace, device=None):
     if device is None:
@@ -141,7 +144,8 @@ def plot_training(params_df, burnin = False, outlier = False, varnames=None, tra
                   ax=None, traces=True, quantiles=[0.1, 0.9], confidence=True):
 
     nburnin = params_df.loc[(~params_df._burnin).idxmin()]._niter
-    times_burnin = np.arange(nburnin, params_df._niter.max()+1)  # np.nonzero(params_df.groupby('_niter').mean()['_burnin'].values)[0]
+    times_burnin = np.arange(nburnin, params_df._niter.max()+1)
+    # np.nonzero(params_df.groupby('_niter').mean()['_burnin'].values)[0]
     burnin_index = params_df._burnin.values
     if burnin and hasattr(params_df, '_burnin'):
         params_df = params_df[params_df._burnin]
@@ -152,7 +156,7 @@ def plot_training(params_df, burnin = False, outlier = False, varnames=None, tra
         params_df.index = params_df.index * 0
 
     if varnames is None:
-            varnames = [k for k in params_df.columns if k not in ['_niter', '_nchain']]
+        varnames = [k for k in params_df.columns if k not in ['_niter', '_nchain']]
 
     n = len(varnames)
 
@@ -214,7 +218,8 @@ def plot_training(params_df, burnin = False, outlier = False, varnames=None, tra
 
 def set_style():
     plt.rcParams['figure.figsize'] = (20, 6)
-    #output_notebook()
+    # output_notebook()
+
 
 def plot_text(title="title", x="xlabel", y="ylabel", ncol=3, loc='best', axis=None, legend=True):
     plt.axis('tight')
@@ -226,6 +231,7 @@ def plot_text(title="title", x="xlabel", y="ylabel", ncol=3, loc='best', axis=No
     if axis is not None:
         plt.axis(axis)
     plt.tight_layout()
+
 
 def save_df(df, path='df.h5', key='df'):
     rfind = path.rfind('/')
