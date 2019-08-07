@@ -61,7 +61,7 @@ class StochasticProcess(TpModule):
         if quantiles:
             np_samples = numpy(samples)
             plot2d(t, np.percentile(np_samples, 100*quantiles[0], axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--',
-                   label=(str(int(max(quantiles)-min(quantiles))))+'% CI')
+                   label=(str(int(100*(max(quantiles)-min(quantiles)))))+'% CI')
             for q in quantiles[1:]:
                 plot2d(t, np.percentile(np_samples, 100*q, axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--')
             quantile_down = np.percentile(np_samples, 100*min(quantiles), axis=1)
