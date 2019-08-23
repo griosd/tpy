@@ -72,19 +72,20 @@ def numpy(tensor):
 
 
 def resolve_inverse(f, y, x0=None, loss=MSELoss(), prop=False, tol=1e-4, max_iters=10000, *args, **kwargs):
-    '''return x so f(x) = y'''
+    """return x so f(x) = y"""
     if x0 is None:
         x = y.clone()
     else:
         x = x0.clone()
-    tol_F = tol*y.mean()
+    tol_F = tol * y.mean()
     x.requires_grad_(True)
     if prop:
         one = torch.tensor(1.0).to(x.device)
-        cost = lambda p, y: loss(p / y, one)
+        def cost(p, y): return loss(p / y, one)
+        # cost = lambda p, y: loss(p / y, one)
     else:
         cost = loss
-    optimizer = torch.optim.Rprop([x]) #RMSprop Adadelta
+    optimizer = torch.optim.Rprop([x])  # RMSprop Adadelta
     for t in range(max_iters):
         optimizer.zero_grad()
         F = cost(f(x, *args, **kwargs), y)
@@ -106,7 +107,7 @@ class NonInformative(pyro.distributions.Uniform):
         return torch.zeros_like(value)
 
 
-def parameter(name, shape=(1,1,1), device=None):
+def parameter(name, shape=(1, 1, 1), device=None):
     if device is None:
         device = device_fn()
     p = NonInformative(torch.zeros(shape, device=device), torch.ones(shape, device=device))
@@ -134,7 +135,7 @@ def robust_cholesky(A, upper=False, out=None, jitter=None):
         else:
             A[i].zero_().masked_fill_(mask, 1e-10)
 
-    Amax = A.diagonal(dim1=1, dim2=2).mean(dim=1)[:,None,None]
+    Amax = A.diagonal(dim1=1, dim2=2).mean(dim=1)[:, None, None]
     A = A/Amax
     try:
         L = torch.cholesky(A, upper=upper, out=out)
@@ -143,7 +144,7 @@ def robust_cholesky(A, upper=False, out=None, jitter=None):
             if torch.isnan(L if out is None else out).any():
                 raise RuntimeError
 
-        return L*(Amax**0.5)
+        return L * (Amax**0.5)
     except RuntimeError as e:
         if jitter is None:
             jitter = 1e-6 if A.dtype == torch.float32 else 1e-8
@@ -158,10 +159,9 @@ def robust_cholesky(A, upper=False, out=None, jitter=None):
                 if A.dim() > 2 and A.is_cuda:
                     if torch.isnan(L if out is None else out).any():
                         raise RuntimeError("singular")
-                #warnings.warn(f"A not p.d., added jitter of {jitter} to the diagonal", RuntimeWarning)
+                # warnings.warn(f"A not p.d., added jitter of {jitter} to the diagonal", RuntimeWarning)
                 return L*(Amax**0.5)
             except RuntimeError:
                 continue
 
         raise e
-

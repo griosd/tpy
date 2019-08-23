@@ -22,9 +22,12 @@ def abc_samples(posterior, t, obs_t, obs_y, nsamples=100, pdarts=33, eps=5e-3, n
     for i in range(ntraits):
         samples_darts = posterior(all_t, darts)[0]
         samples_darts_norm = samples_darts[:obs_n].norm(dim=0)
-        samples_darts_index = (obs_y_norm * (1 - eps) < samples_darts_norm) & (samples_darts_norm < obs_y_norm * (1 + eps))
+        samples_darts_index = (obs_y_norm * (1-eps) < samples_darts_norm) & (samples_darts_norm < obs_y_norm * (1+eps))
         samples_darts_n = samples_darts_index.sum().item()
-        samples[:, current_samples: (current_samples+samples_darts_n)] = samples_darts[obs_n:, samples_darts_index][:, :min(nsamples-current_samples, samples_darts_n)]
+        samples[:, current_samples: (current_samples+samples_darts_n)] = samples_darts[obs_n:,
+                                                                         samples_darts_index][:,
+                                                                         :min(nsamples-current_samples,
+                                                                              samples_darts_n)]
         current_samples += samples_darts_n
         if current_samples >= nsamples:
             return samples
@@ -64,7 +67,8 @@ def params_original(params_trans, transforms=None, trace=None):
     return params
 
 
-def sgd_samples(tgp, params_model, niter=1000, start=None, optim=torch.optim.Rprop, lr=1e-2, psgd=0.5, pbatch=0.7, update_batch=100, update_tqdm=10):
+def sgd_samples(tgp, params_model, niter=1000, start=None, optim=torch.optim.Rprop, lr=1e-2, psgd=0.5, pbatch=0.7,
+                update_batch=100, update_tqdm=10):
     device = tgp.device
     obs_n = len(tgp.obs_t)
     size_batch = int(obs_n * pbatch)
@@ -105,7 +109,8 @@ def sgd_samples(tgp, params_model, niter=1000, start=None, optim=torch.optim.Rpr
         loss_backward = loss_nll.sum()
 
         all_params += [{k: v.detach().data.clone() for k, v in params.items()}]
-        nll = tgp.nll(index=Ellipsis).detach().data.clone() + torch.cat([v for k,v in all_params[-1].items()], dim=1).sum(dim=1)[:, 0]*0
+        nll = tgp.nll(index=Ellipsis).detach().data.clone() + torch.cat([v for k, v in all_params[-1].items()],
+                                                                        dim=1).sum(dim=1)[:, 0] * 0
         # print(nll)
         all_loss += [nll]
 
@@ -114,12 +119,12 @@ def sgd_samples(tgp, params_model, niter=1000, start=None, optim=torch.optim.Rpr
 
         def closure():
             return loss_backward
-        #print({k: (params[k], v.grad) for k, v in params_map.items() if v.grad is not None})
+        # print({k: (params[k], v.grad) for k, v in params_map.items() if v.grad is not None})
         optimizer.step(closure)
 
         if zero_long.equal(t % update_tqdm):
             last_loss = all_loss[-1]
-            progress.set_description('{0:.5f}'.format(last_loss[last_loss==last_loss].min().item()))
+            progress.set_description('{0:.5f}'.format(last_loss[last_loss == last_loss].min().item()))
 
     return all_params, all_loss
 

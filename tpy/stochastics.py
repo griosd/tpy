@@ -38,7 +38,8 @@ class StochasticProcess(TpModule):
         else:
             return self.posterior(t, n)
 
-    def plot(self, t, samples=None, subsamples=Ellipsis, mean=True, quantiles=[0.025, 0.975], obs=True, hidden=None, logp=None, alpha=0.2, xlim=None, ylim=None, loc='best', ncol=3, palette='Greens', *args, **kwargs):
+    def plot(self, t, samples=None, subsamples=Ellipsis, mean=True, quantiles=[0.025, 0.975], obs=True, hidden=None,
+             logp=None, alpha=0.2, xlim=None, ylim=None, loc='best', ncol=3, palette='Greens', *args, **kwargs):
         cmap = plt.get_cmap(palette)
         color = cmap(1.0)
         if samples is None:
@@ -56,10 +57,11 @@ class StochasticProcess(TpModule):
         if mean:
             smean = samples.mean(dim=-1)
             plot2d(t, smean, color=color, lw=3, label='Mean')
-            #plot2d(t, smean, color='w', lw=1)
+            # plot2d(t, smean, color='w', lw=1)
         if quantiles:
             np_samples = numpy(samples)
-            plot2d(t, np.percentile(np_samples, 100*quantiles[0], axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--', label=(str(int(max(quantiles)-min(quantiles))))+'% CI')
+            plot2d(t, np.percentile(np_samples, 100*quantiles[0], axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--',
+                   label=(str(int(100*(max(quantiles)-min(quantiles)))))+'% CI')
             for q in quantiles[1:]:
                 plot2d(t, np.percentile(np_samples, 100*q, axis=1), color=cmap(0.8), alpha=0.8, lw=1.5, ls='--')
             quantile_down = np.percentile(np_samples, 100*min(quantiles), axis=1)
@@ -122,7 +124,7 @@ class GWNP(StochasticProcess):
         return torch.empty((t.shape[0], nsamples), dtype=self.dtype, device=self.device).normal_()
 
     def nll(self, x):
-        '''x.shape = (nparams, nobs, noutput)'''
+        """x.shape = (nparams, nobs, noutput)"""
         return 0.5*(x.shape[1]*log2pi + (x**2).sum(dim=1)).sum(dim=1)
 
 
@@ -163,10 +165,10 @@ class TP(StochasticProcess):
 
     def logdetgradinv(self, t, list_obs_y):
         r = self.transport[0].logdetgradinv(t, y=list_obs_y[1], sy=list_obs_y[0])
-        #print(self.transport[0], self.transport[0].logdetgradinv(t, y=list_obs_y[1], sy=list_obs_y[0]))
+        # print(self.transport[0], self.transport[0].logdetgradinv(t, y=list_obs_y[1], sy=list_obs_y[0]))
         for i in range(1, len(self.transport)):
             r += self.transport[i].logdetgradinv(t, y=list_obs_y[i+1], sy=list_obs_y[i])
-            #print(self.transport[i], self.transport[i].logdetgradinv(t, y=list_obs_y[i+1], sy=list_obs_y[i]))
+            # print(self.transport[i], self.transport[i].logdetgradinv(t, y=list_obs_y[i+1], sy=list_obs_y[i]))
         return r
 
     @property
@@ -193,7 +195,7 @@ class TP(StochasticProcess):
         if y is None:
             y = self.obs_y[:, index, :]
         inverse_y, list_obs_y = self.inverse(t, y, return_inv=True, return_list=True)
-        #print(self.generator.nll(inverse_y) )
+        # print(self.generator.nll(inverse_y) )
         return self.generator.nll(inverse_y) - self.logdetgradinv(t, list_obs_y=list_obs_y)
 
 

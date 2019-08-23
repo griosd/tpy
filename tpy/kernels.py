@@ -90,6 +90,14 @@ class WN(Kernel):
         return self.var * x1.eq(x2).float()
 
 
+class NIL(Kernel):
+    def __init__(self, *args, **kwargs):
+        super(NIL, self).__init__(*args, **kwargs)
+
+    def k(self, x1, x2):
+        return 0.0 * x1.eq(x2).float()
+
+
 class BW(Kernel):
     def __init__(self, var=None, *args, **kwargs):
         super(BW, self).__init__(*args, **kwargs)
@@ -141,6 +149,18 @@ class COS(Kernel):
         return self.var * torch.cos(pi2*(x1 - x2) / self.period)
 
 
+class SINC(Kernel):
+    def __init__(self, var=None, period=None, eps=1e-6, *args, **kwargs):
+        super(SINC, self).__init__(*args, **kwargs)
+        self.var = var
+        self.period = period
+        self.eps = torch.tensor(eps, device=self.var.device)
+
+    def k(self, x1, x2):
+        d = torch.max(torch.abs(x1 - x2), self.eps)
+        return self.var * torch.sin(pi2 * d * self.period) / (pi2 * d * self.period)
+
+
 class POL(Kernel):
     def __init__(self, var=None, bias=0, p=1, *args, **kwargs):
         super(POL, self).__init__(*args, **kwargs)
@@ -183,7 +203,7 @@ class MatrixSquareRoot(torch.autograd.Function):
     def backward(ctx, grad_output):
         grad_input = None
         if ctx.needs_input_grad[0]:
-            sqrtm, = ctx.saved_variables
+            sqrtm = ctx.saved_variables
             sqrtm = numpy(sqrtm.data).astype(np.float_)
             gm = numpy(grad_output.data).astype(np.float_)
 
@@ -201,7 +221,7 @@ _sqrtm = MatrixSquareRoot.apply
 
 
 def sqrtm(inputs):
-    '''Square root of a positive definite matrix'''
+    """Square root of a positive definite matrix"""
     if len(inputs.shape) == 2:
         return _sqrtm(inputs)
     else:

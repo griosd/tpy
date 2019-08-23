@@ -10,19 +10,19 @@ class Transport(TpModule):
         super(Transport, self).__init__(*args, **kwargs)
 
     def forward(self, t, x, noise=False):
-        ''' $T_{t}(x)$ '''
+        """ $T_{t}(x)$ """
         pass
 
     def inverse(self, t, y, noise=True):
-        ''' $T_{t}^{-1}(y)$ '''
+        """ $T_{t}^{-1}(y)$ """
         pass
 
     def prior(self, t, nsamples=1, generator=None, noise=False):
-        ''' $T_{t}(x)$ '''
+        """ $T_{t}(x)$ """
         return self.forward(t, generator.prior(t, nsamples=nsamples), noise=noise)
 
     def posterior(self, t, x, obs_t, obs_y, generator, noise=False):
-        ''' $T_{t}(x)$ '''
+        """ $T_{t}(x)$ """
         pass
 
     def logdetgradinv(self, t, y, sy=None):
@@ -35,15 +35,15 @@ class MarginalTransport(Transport):
         self.marginal = marginal
 
     def forward(self, t, x, noise=None):
-        #print(self.name, 'forward', noise)
+        # print(self.name, 'forward', noise)
         return self.marginal(t, x)
 
     def inverse(self, t, y, noise=None):
-        #print(self.name, 'inverse', noise)
+        # print(self.name, 'inverse', noise)
         return self.marginal.inverse(t, y)
 
     def posterior(self, t, x, obs_t=None, obs_y=None, generator=None, noise=False):
-        ''' $T_{t}(x)$ '''
+        """ $T_{t}(x)$ """
         return self.forward(t, x, noise=noise)
 
     def logdetgradinv(self, t, y, sy=None):
@@ -66,8 +66,8 @@ class CovarianceTransport(Transport):
             return self.kernel(t1, t2) + self.noise(t1, t2)
 
     def forward(self, t, x, noise=False):
-        #print(self.name, self.kernel, 'forward', noise)
-        '''$cho y$'''
+        # print(self.name, self.kernel, 'forward', noise)
+        """$cho y$"""
         if noise:
             kernel = self.kernel_noise
         else:
@@ -75,8 +75,8 @@ class CovarianceTransport(Transport):
         return torch.matmul(cholesky(kernel(t)), x)
 
     def inverse(self, t, y, noise=True):
-        #print(self.name, self.kernel, 'inverse', noise)
-        '''$cho^{-1}y$'''
+        # print(self.name, self.kernel, 'inverse', noise)
+        """$cho^{-1}y$"""
         if noise:
             kernel = self.kernel_noise
         else:
@@ -85,7 +85,7 @@ class CovarianceTransport(Transport):
         return torch.triangular_solve(y, self.cholesky_cache, upper=False)[0]
 
     def posterior(self, t, x, obs_t, obs_y, generator=None, noise=False):
-        #print(self.name, self.kernel, 'posterior', noise)
+        # print(self.name, self.kernel, 'posterior', noise)
         nobs = obs_t.shape[0]
         if noise:
             kernel = self.kernel_noise
@@ -112,7 +112,7 @@ class CovarianceTransport(Transport):
 
 
 class Norm2Transport(Transport):
-    ''' y = Q(F(|x|)) x / |x| '''
+    """ y = Q(F(|x|)) x / |x| """
     def __init__(self, obj, ref=None, *args, **kwargs):
         super(Norm2Transport, self).__init__(*args, **kwargs)
         self.obj = obj
@@ -153,18 +153,18 @@ class Norm2Transport(Transport):
         normy = self.norm_y(normx, n=t.shape[0])
 
         scale = normy/normx
-        dalpha = (self.norm_x(normy * (1 + eps)+eps, n=t.shape[0]) - self.norm_x(normy * (1 - eps)-eps, n=t.shape[0])) / (
-                (normy+1) * 2*eps)
-        #print(scale)
-        #print(dalpha)
+        dalpha = (self.norm_x(normy * (1 + eps)+eps,
+                              n=t.shape[0]) - self.norm_x(normy * (1 - eps)-eps, n=t.shape[0])) / ((normy+1) * 2*eps)
+        # print(scale)
+        # print(dalpha)
         scale[dalpha[:, 0, 0] != dalpha[:, 0, 0], 0, 0] = 1e-10
         dalpha[dalpha[:, 0, 0] != dalpha[:, 0, 0], 0, 0] = 1e-10
-        #print(-(t.shape[0]-1)*scale[:, 0, 0].log() + dalpha[:, 0, 0].log())
+        # print(-(t.shape[0]-1)*scale[:, 0, 0].log() + dalpha[:, 0, 0].log())
         return -(t.shape[0]-1)*scale[:, 0, 0].log() + dalpha[:, 0, 0].log()
 
 
 class RadialTransportOld(Transport):
-    ''' y = Q(F(|x|)) x / |x| '''
+    """ y = Q(F(|x|)) x / |x| """
     def __init__(self, mixture=None, obj=None, ref=None, *args, **kwargs):
         super(RadialTransportOld, self).__init__(*args, **kwargs)
         self.obj = obj
@@ -181,7 +181,8 @@ class RadialTransportOld(Transport):
 
     def norm_x(self, norm_y, n=None):
         if self.obj is None:
-            return resolve_inverse(lambda norm_x: self.mixture.Q(self.ref.F(norm_x, n)) * norm_x, norm_y, x0=torch.ones_like(norm_y)*n.sqrt())
+            return resolve_inverse(lambda norm_x: self.mixture.Q(self.ref.F(norm_x, n)) * norm_x,
+                                   norm_y, x0=torch.ones_like(norm_y)*n.sqrt())
         else:
             return self.ref.Q(self.obj.F(norm_y, n), n)
 
@@ -206,7 +207,8 @@ class RadialTransportOld(Transport):
             obs_y = obs_y[None, :, :]
         posterior_norm_y = torch.empty((nparams, x.shape[0], x.shape[1]), device=x.device)
         for i in range(nparams):
-            gen = lambda t0, n: self.forward(t0, generator.prior(t0, n))
+            def gen(t0, n): self.forward(t0, generator.prior(t0, n))
+            # gen = lambda t0, n: self.forward(t0, generator.prior(t0, n))
             samples = abc_samples(gen, t, obs_t, obs_y[i], x.shape[1])
             posterior_norm_y[i, :, :] = samples
         return x[None, :, :]*(posterior_norm_y.norm(dim=1, keepdim=True)/x.norm(dim=0))

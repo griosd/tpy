@@ -1,5 +1,6 @@
 import torch
 from .core import TpModule, device_fn
+from math import pi
 
 
 class Deterministic(TpModule):
@@ -48,7 +49,7 @@ class Func(Deterministic):
 
 
 class Zero(Deterministic):
-    def __init__(self,*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(Zero, self).__init__(*args, **kwargs)
 
     def forward(self, t):
@@ -76,6 +77,25 @@ class Poly(Deterministic):
 
     def forward(self, t):
         return torch.mul(self.w, t**self.e).sum(dim=1).view(-1, t.shape[0], 1)
+
+
+class SinCosPoly(Deterministic):
+    def __init__(self, periods, eps_periods=1.0, wsin=None, wcos=None, bias=0, *args, **kwargs):
+        super(SinCosPoly, self).__init__(*args, **kwargs)
+        if wsin is None:
+            wsin = torch.ones(len(periods), device=self.device).view(-1, len(periods), 1)
+        if wcos is None:
+            wcos = torch.ones(len(periods), device=self.device).view(-1, len(periods), 1)
+        self.periods = periods.view(1, -1, 1)
+        self.wsin = wsin
+        self.wcos = wcos
+        self.bias = bias
+        self.eps_periods = eps_periods
+
+    def forward(self, t):
+        tsin = torch.sin(2*pi*t / (self.periods * self.eps_periods))
+        tcos = torch.cos(2*pi*t / (self.periods * self.eps_periods))
+        return self.bias+(torch.mul(self.wsin, tsin)+torch.mul(self.wcos, tcos)).sum(dim=1).view(-1, t.shape[0], 1)
 
 
 class Marginal(TpModule):
@@ -113,6 +133,26 @@ class Affine(Marginal):
         return -self.scale(t).log()
 
 
+class AffineSwap(Marginal):
+    def __init__(self, shift=None, scale=None, pol=0, *args, **kwargs):
+        super(AffineSwap, self).__init__(*args, **kwargs)
+        if shift is None:
+            shift = Poly(n=pol)
+        if scale is None:
+            scale = Poly(n=pol)
+        self.shift = shift
+        self.scale = scale
+
+    def forward(self, t, x):
+        return (self.shift(t) + x) * self.scale(t)
+
+    def inverse(self, t, y):
+        return y / self.scale(t) - self.shift(t)
+
+    def log_gradient_inverse(self, t, y):
+        return -self.scale(t).log()
+
+
 class Shift(Marginal):
     def __init__(self, shift=None, pol=0, *args, **kwargs):
         super(Shift, self).__init__(*args, **kwargs)
@@ -128,6 +168,23 @@ class Shift(Marginal):
 
     def log_gradient_inverse(self, t, y):
         return torch.zeros_like(y)
+
+
+class Scale(Marginal):
+    def __init__(self, scale=None, pol=0, *args, **kwargs):
+        super(Scale, self).__init__(*args, **kwargs)
+        if scale is None:
+            scale = Poly(n=pol)
+        self.scale = scale
+
+    def forward(self, t, x):
+        return x * self.scale(t)
+
+    def inverse(self, t, y):
+        return y / self.scale(t)
+
+    def log_gradient_inverse(self, t, y):
+        return -self.scale(t).log()
 
 
 class LogShift(Marginal):
