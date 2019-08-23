@@ -56,6 +56,10 @@ def plot2d(tensor1, tensor2=None, *args, **kwargs):
     return plt.plot(numpy(tensor1), numpy(tensor2), *args, **kwargs)
 
 
+def fill_between(x, y1, y2, *args, **kwargs):
+    return plt.fill_between(numpy(x), numpy(y1), numpy(y2), *args, **kwargs)
+
+
 def matshow(tensor, *args, **kwargs):
     return plt.matshow(numpy(tensor), *args, **kwargs)
 
