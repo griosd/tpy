@@ -195,7 +195,6 @@ class TP(StochasticProcess):
         if y is None:
             y = self.obs_y[:, index, :]
         inverse_y, list_obs_y = self.inverse(t, y, return_inv=True, return_list=True)
-        # print(self.generator.nll(inverse_y) )
         return self.generator.nll(inverse_y) - self.logdetgradinv(t, list_obs_y=list_obs_y)
 
 
